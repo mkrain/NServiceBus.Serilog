@@ -1,32 +1,40 @@
 ﻿using System;
+using System.Threading.Tasks;
 using NServiceBus.Pipeline;
-using NServiceBus.Pipeline.Contexts;
+using NServiceBus.Routing;
 using NServiceBus.Settings;
 
 namespace NServiceBus.Serilog.Tracing
 {
-    class ReceiveMessageBehavior : IBehavior<IncomingContext>
+    class ReceiveMessageBehavior : Behavior<IIncomingLogicalMessageContext>
     {
-        ReadOnlySettings settings;
         LogBuilder logBuilder;
+        EndpointName endpointName;
 
         public ReceiveMessageBehavior(ReadOnlySettings settings, LogBuilder logBuilder)
         {
-            this.settings = settings;
+            endpointName = settings.EndpointName();
             this.logBuilder = logBuilder;
         }
 
-        public void Invoke(IncomingContext context, Action next)
+        public class Registration : RegisterStep
+        {
+            public Registration()
+                : base("SerilogReceiveMessage", typeof(ReceiveMessageBehavior), "Logs incoming messages")
+            {
+                InsertBefore(WellKnownStep.MutateIncomingMessages);
+            }
+        }
+        public override async Task Invoke(IIncomingLogicalMessageContext context, Func<Task> next)
         {
             var logger = logBuilder.GetLogger("NServiceBus.Serilog.MessageReceived");
-            var logicalMessage = context.IncomingLogicalMessage;
             var forContext = logger
-                .ForContext("ProcessingEndpoint", settings.EndpointName())
-                .ForContext("Message", logicalMessage.Instance, true)
-                .ForContext("MessageType", logicalMessage.MessageTypeName());
-            forContext = forContext.AddHeaders(logicalMessage.Headers);
+                .ForContext("ProcessingEndpoint", endpointName.ToString())
+                .ForContext("Message", context.Message.Instance, true)
+                .ForContext("MessageType", context.Message.MessageType);
+            forContext = forContext.AddHeaders(context.Headers);
             forContext.Information("Receive message {MessageType} {MessageId}");
-            next();
+            await next().ConfigureAwait(false);
         }
     }
 }

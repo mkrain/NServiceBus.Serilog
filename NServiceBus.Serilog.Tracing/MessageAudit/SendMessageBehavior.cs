@@ -1,11 +1,11 @@
 ﻿using System;
+using System.Threading.Tasks;
 using NServiceBus.Pipeline;
-using NServiceBus.Pipeline.Contexts;
 
 namespace NServiceBus.Serilog.Tracing
 {
     // wrap DispatchMessageToTransportBehavior
-    class SendMessageBehavior : IBehavior<OutgoingContext>
+    class SendMessageBehavior : Behavior<IOutgoingLogicalMessageContext>
     {
         LogBuilder logBuilder;
 
@@ -14,18 +14,26 @@ namespace NServiceBus.Serilog.Tracing
             this.logBuilder = logBuilder;
         }
 
-        public void Invoke(OutgoingContext context, Action next)
+        public override async Task Invoke(IOutgoingLogicalMessageContext context, Func<Task> next)
         {
             var logger = logBuilder.GetLogger("NServiceBus.Serilog.MessageSent");
-            var message = context.OutgoingLogicalMessage;
             var forContext = logger
-                .ForContext("Message", message.Instance, true)
-                .ForContext("MessageType", message.MessageTypeName())
-                .ForContext("MessageId", context.OutgoingMessage.Id);
-            forContext = forContext.AddHeaders(context.OutgoingLogicalMessage.Headers);
+                .ForContext("Message", context.Message.Instance, true)
+                .ForContext("MessageType", context.Message.MessageType.ToString())
+                .ForContext("MessageId", context.MessageId);
+            forContext = forContext.AddHeaders(context.Headers);
 
             forContext.Information("Sent message {MessageType} {MessageId}");
-            next();
+            await next().ConfigureAwait(false);
+        }
+
+        public class Registration : RegisterStep
+        {
+            public Registration()
+                : base("SerilogSendMessage", typeof(SendMessageBehavior), "Logs outgoing messages")
+            {
+                //InsertAfter(WellKnownStep.DispatchMessageToTransport);
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using NServiceBus;
 using NServiceBus.Logging;
 using NServiceBus.Serilog;
@@ -8,6 +9,11 @@ using Serilog;
 class Program
 {
     static void Main()
+    {
+        AsyncMain().GetAwaiter().GetResult();
+    }
+
+    static async Task AsyncMain()
     {
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
@@ -21,18 +27,28 @@ class Program
             .MinimumLevel.Information()
             .CreateLogger();
 
-        var busConfig = new BusConfiguration();
-        busConfig.EndpointName("SeqSample");
-        busConfig.EnableFeature<TracingLog>();
-        busConfig.SerilogTracingTarget(tracingLog);
-        busConfig.UseSerialization<JsonSerializer>();
-        busConfig.EnableInstallers();
-        busConfig.UsePersistence<InMemoryPersistence>();
-        using (var bus = Bus.Create(busConfig))
+        var config = new EndpointConfiguration("SeqSample");
+        config.EnableFeature<TracingLog>();
+        config.SerilogTracingTarget(tracingLog);
+        config.UseSerialization<JsonSerializer>();
+        config.EnableInstallers();
+        config.UsePersistence<InMemoryPersistence>();
+        config.SendFailedMessagesTo("error");
+        var endpoint = await Endpoint.Start(config);
+        try
         {
-            bus.Start();
+            await endpoint.SendLocal(new CreateUser
+            {
+                UserName = "jsmith",
+                FamilyName = "Smith",
+                GivenNames = "John",
+            });
             Console.WriteLine("\r\nPress any key to stop program\r\n");
             Console.Read();
+        }
+        finally
+        {
+            await endpoint.Stop();
         }
     }
 }
