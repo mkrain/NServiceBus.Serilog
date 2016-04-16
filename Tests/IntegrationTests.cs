@@ -8,6 +8,7 @@ using Serilog;
 using Serilog.Events;
 
 [TestFixture]
+[Explicit]
 public class IntegrationTests
 {
     [Test]
