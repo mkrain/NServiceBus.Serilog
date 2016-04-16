@@ -120,7 +120,7 @@ namespace NServiceBus.Serilog.Tracing
             {
                 sagaStateChange += ";";
             }
-            sagaStateChange += string.Format("{0}:{1}", sagaAudit.SagaId, statechange);
+            sagaStateChange += $"{sagaAudit.SagaId}:{statechange}";
 
             physicalMessage.Headers["NServiceBus.Serilog.Tracing.SagaStateChange"] = sagaStateChange;
         }

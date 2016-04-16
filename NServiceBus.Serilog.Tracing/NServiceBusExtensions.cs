@@ -29,7 +29,7 @@ namespace NServiceBus.Serilog.Tracing
             {
                 return type.Name;
             }
-            return string.Format("{0}.{1}", type.Namespace, type.Name);
+            return $"{type.Namespace}.{type.Name}";
         }
 
         public static DateTime TimeSent(this LogicalMessage logicalMessage)
