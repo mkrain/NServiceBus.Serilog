@@ -11,10 +11,10 @@ namespace NServiceBus.Serilog.Tracing
     {
         SagaUpdatedMessage sagaUpdatedMessage;
 
-        public override async Task Invoke(IOutgoingLogicalMessageContext context, Func<Task> next)
+        public override Task Invoke(IOutgoingLogicalMessageContext context, Func<Task> next)
         {
             AppendMessageToState(context);
-            await next().ConfigureAwait(false);
+            return next();
         }
 
         void AppendMessageToState(IOutgoingLogicalMessageContext context)
@@ -44,7 +44,11 @@ namespace NServiceBus.Serilog.Tracing
         static string GetDestinationForUnicastMessages(IOutgoingLogicalMessageContext context)
         {
             var sendAddressTags = context.RoutingStrategies.OfType<UnicastRoutingStrategy>().Select(urs => urs.Apply(context.Headers)).Cast<UnicastAddressTag>().ToList();
-            return sendAddressTags.Count() != 1 ? null : sendAddressTags.First().Destination;
+            if (sendAddressTags.Count != 1)
+            {
+                return null;
+            }
+            return sendAddressTags.First().Destination;
         }
 
         public class Registration : RegisterStep
@@ -52,7 +56,7 @@ namespace NServiceBus.Serilog.Tracing
             public Registration()
                 : base("SerilogCaptureSagaResultingMessages", typeof(CaptureSagaResultingMessagesBehavior), "Reports messages outgoing from a saga to Serilog")
             {
-                //InsertAfter(WellKnownStep.InvokeSaga);
+               // InsertAfter("InvokeSaga");
             }
         }
 

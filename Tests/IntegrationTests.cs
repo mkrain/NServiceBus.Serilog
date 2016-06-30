@@ -26,7 +26,7 @@ public class IntegrationTests
             .CreateLogger();
         LogManager.Use<SerilogFactory>();
 
-        var endpointConfiguration = new EndpointConfiguration("NLogTests");
+        var endpointConfiguration = new EndpointConfiguration("SerilogTests");
         endpointConfiguration.UseSerialization<JsonSerializer>();
         endpointConfiguration.EnableInstallers();
         endpointConfiguration.SendFailedMessagesTo("error");

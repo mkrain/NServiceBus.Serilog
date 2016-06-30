@@ -2,7 +2,8 @@
 using NServiceBus;
 using NServiceBus.Logging;
 
-public class CreateUserSaga : Saga<MySagaData>, IAmStartedByMessages<CreateUser>
+public class CreateUserSaga : Saga<MySagaData>, 
+    IAmStartedByMessages<CreateUser>
 {
     static ILog logger = LogManager.GetLogger(typeof (CreateUserSaga));
 
@@ -16,8 +17,12 @@ public class CreateUserSaga : Saga<MySagaData>, IAmStartedByMessages<CreateUser>
     {
         Data.UserName = message.UserName;
         logger.Info("User created");
+        var userCreated = new UserCreated
+        {
+            UserName = message.UserName
+        };
+        await context.SendLocal(userCreated);
         MarkAsComplete();
-        await context.SendLocal(new UserCreated { UserName = message.UserName });
     }
 }
 

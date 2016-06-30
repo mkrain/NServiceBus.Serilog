@@ -1,20 +1,25 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using NServiceBus.Pipeline;
 using NServiceBus.Routing;
-using NServiceBus.Settings;
+using Serilog;
+using Serilog.Events;
+using Serilog.Parsing;
 
 namespace NServiceBus.Serilog.Tracing
 {
     class ReceiveMessageBehavior : Behavior<IIncomingLogicalMessageContext>
     {
-        LogBuilder logBuilder;
-        EndpointName endpointName;
+        MessageTemplate messageTemplate;
+        ILogger logger;
 
-        public ReceiveMessageBehavior(ReadOnlySettings settings, LogBuilder logBuilder)
+        public ReceiveMessageBehavior(LogBuilder logBuilder)
         {
-            endpointName = settings.EndpointName();
-            this.logBuilder = logBuilder;
+            var templateParser = new MessageTemplateParser();
+            messageTemplate = templateParser.Parse("Receive message {MessageType} {MessageId}.");
+            logger = logBuilder.GetLogger("NServiceBus.Serilog.MessageReceived");
         }
 
         public class Registration : RegisterStep
@@ -22,19 +27,21 @@ namespace NServiceBus.Serilog.Tracing
             public Registration()
                 : base("SerilogReceiveMessage", typeof(ReceiveMessageBehavior), "Logs incoming messages")
             {
-                InsertBefore(WellKnownStep.MutateIncomingMessages);
+                InsertBefore("MutateIncomingMessages");
             }
         }
-        public override async Task Invoke(IIncomingLogicalMessageContext context, Func<Task> next)
+
+        public override Task Invoke(IIncomingLogicalMessageContext context, Func<Task> next)
         {
-            var logger = logBuilder.GetLogger("NServiceBus.Serilog.MessageReceived");
-            var forContext = logger
-                .ForContext("ProcessingEndpoint", endpointName.ToString())
-                .ForContext("Message", context.Message.Instance, true)
-                .ForContext("MessageType", context.Message.MessageType);
-            forContext = forContext.AddHeaders(context.Headers);
-            forContext.Information("Receive message {MessageType} {MessageId}");
-            await next().ConfigureAwait(false);
+            IEnumerable<LogEventProperty> properties = new[]
+            {
+                new LogEventProperty("MessageType", new ScalarValue(context.Message.MessageType)),
+                logger.BindProperty("Message", context.Message.Instance),
+                logger.BindProperty("MessageId", context.MessageId),
+            };
+            properties = properties.Concat(logger.BuildHeaders(context.Headers));
+            logger.WriteInfo(messageTemplate, properties);
+            return next();
         }
     }
 }

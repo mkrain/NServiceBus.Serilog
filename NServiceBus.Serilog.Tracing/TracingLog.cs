@@ -28,7 +28,8 @@ namespace NServiceBus.Serilog.Tracing
             {
                 logger = Log.Logger;
             }
-            var logBuilder = new LogBuilder(logger, context.Settings.EndpointName().ToString());
+            //TODO: dont use container
+            var logBuilder = new LogBuilder(logger, context.Settings.EndpointName());
             context.Container.ConfigureComponent(() => logBuilder, DependencyLifecycle.SingleInstance);
 
             context.Pipeline.Register<ReceiveMessageBehavior.Registration>();

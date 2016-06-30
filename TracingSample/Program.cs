@@ -37,13 +37,14 @@ class Program
         var endpoint = await Endpoint.Start(config);
         try
         {
-            await endpoint.SendLocal(new CreateUser
+            var createUser = new CreateUser
             {
                 UserName = "jsmith",
                 FamilyName = "Smith",
                 GivenNames = "John",
-            });
-            Console.WriteLine("\r\nPress any key to stop program\r\n");
+            };
+            await endpoint.SendLocal(createUser);
+            Console.WriteLine("Press any key to stop program");
             Console.Read();
         }
         finally

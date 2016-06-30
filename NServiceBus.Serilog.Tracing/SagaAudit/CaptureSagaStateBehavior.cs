@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using NServiceBus.Pipeline;
 using NServiceBus.Sagas;
 using Serilog;
 using Serilog.Events;
+using Serilog.Parsing;
 
 namespace NServiceBus.Serilog.Tracing
 {
@@ -12,17 +15,20 @@ namespace NServiceBus.Serilog.Tracing
     {
         SagaUpdatedMessage sagaAudit;
         ILogger logger;
+        MessageTemplate messageTemplate;
 
         public CaptureSagaStateBehavior(LogBuilder logBuilder)
         {
+            var templateParser = new MessageTemplateParser();
+            messageTemplate = templateParser.Parse("Saga execution '{SagaType}' '{SagaId}'.");
+
             logger = logBuilder.GetLogger("NServiceBus.Serilog.SagaAudit");
         }
 
         public override async Task Invoke(IInvokeHandlerContext context, Func<Task> next)
         {
-            ActiveSagaInstance activeSagaInstance;
-
-            if (!context.Extensions.TryGet(out activeSagaInstance))
+            var saga = context.MessageHandler.Instance as Saga;
+            if (saga == null)
             {
                 await next().ConfigureAwait(false);
                 return; // Message was not handled by the saga
@@ -33,13 +39,16 @@ namespace NServiceBus.Serilog.Tracing
                 await next().ConfigureAwait(false);
                 return;
             }
+
             sagaAudit = new SagaUpdatedMessage
             {
-                StartTime = DateTime.UtcNow,
-                SagaType = activeSagaInstance.Instance.GetType().FullName
+                StartTime = DateTime.UtcNow
             };
             context.Extensions.Set(sagaAudit);
-            await next().ConfigureAwait(false);
+            await next()
+                .ConfigureAwait(false);
+            var activeSagaInstance = context.Extensions.Get<ActiveSagaInstance>();
+            sagaAudit.SagaType = activeSagaInstance.Instance.GetType().FullName;
 
             sagaAudit.FinishTime = DateTime.UtcNow;
             AuditSaga(activeSagaInstance, context);
@@ -75,17 +84,21 @@ namespace NServiceBus.Serilog.Tracing
 
             AssignSagaStateChangeCausedByMessage(context);
 
-            logger
-                .ForContext("SagaId", sagaAudit.SagaId)
-                .ForContext("SagaType", sagaAudit.SagaType)
-                .ForContext("StartTime", sagaAudit.StartTime)
-                .ForContext("FinishTime", sagaAudit.FinishTime)
-                .ForContext("IsCompleted", sagaAudit.IsCompleted)
-                .ForContext("IsNew", sagaAudit.IsNew)
-                .ForContext("Initiator", initiator, true)
-                .ForContext("ResultingMessages", sagaAudit.ResultingMessages, true)
-                .ForContext("SagaState", saga.Entity, true)
-                .Information("Saga execution {SagaType} {SagaId}");
+            logger.WriteInfo(
+                messageTemplate: messageTemplate,
+                properties: new[]
+                {
+                    new LogEventProperty("SagaType", new ScalarValue(sagaAudit.SagaType)),
+                    new LogEventProperty("SagaId", new ScalarValue(sagaAudit.SagaId)),
+                    new LogEventProperty("StartTime", new ScalarValue(sagaAudit.StartTime)),
+                    new LogEventProperty("FinishTime", new ScalarValue(sagaAudit.FinishTime)),
+                    new LogEventProperty("IsCompleted", new ScalarValue(sagaAudit.IsCompleted)),
+                    new LogEventProperty("IsNew", new ScalarValue(sagaAudit.IsNew)),
+                    new LogEventProperty("SagaType", new ScalarValue(sagaAudit.SagaType)),
+                    logger.BindProperty("Initiator", initiator),
+                    logger.BindProperty("ResultingMessages", sagaAudit.ResultingMessages),
+                    logger.BindProperty("Entity", saga.Entity),
+                });
         }
 
 
@@ -122,7 +135,7 @@ namespace NServiceBus.Serilog.Tracing
             public Registration()
                 : base("SerilogCaptureSagaState", typeof(CaptureSagaStateBehavior), "Records saga state changes")
             {
-                InsertBefore(WellKnownStep.InvokeSaga);
+                InsertBefore("InvokeSaga");
             }
         }
     }

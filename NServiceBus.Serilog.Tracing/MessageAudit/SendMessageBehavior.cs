@@ -1,30 +1,37 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using NServiceBus.Pipeline;
+using Serilog;
+using Serilog.Events;
+using Serilog.Parsing;
 
 namespace NServiceBus.Serilog.Tracing
 {
-    // wrap DispatchMessageToTransportBehavior
     class SendMessageBehavior : Behavior<IOutgoingLogicalMessageContext>
     {
-        LogBuilder logBuilder;
+        ILogger logger;
+        MessageTemplate messageTemplate;
 
         public SendMessageBehavior(LogBuilder logBuilder)
         {
-            this.logBuilder = logBuilder;
+            var templateParser = new MessageTemplateParser();
+            logger = logBuilder.GetLogger("NServiceBus.Serilog.MessageSent");
+            messageTemplate = templateParser.Parse("Sent message {MessageType} {MessageId}.");
         }
 
-        public override async Task Invoke(IOutgoingLogicalMessageContext context, Func<Task> next)
+        public override Task Invoke(IOutgoingLogicalMessageContext context, Func<Task> next)
         {
-            var logger = logBuilder.GetLogger("NServiceBus.Serilog.MessageSent");
-            var forContext = logger
-                .ForContext("Message", context.Message.Instance, true)
-                .ForContext("MessageType", context.Message.MessageType.ToString())
-                .ForContext("MessageId", context.MessageId);
-            forContext = forContext.AddHeaders(context.Headers);
-
-            forContext.Information("Sent message {MessageType} {MessageId}");
-            await next().ConfigureAwait(false);
+            IEnumerable<LogEventProperty> properties = new[]
+            {
+                new LogEventProperty("MessageType", new ScalarValue(context.Message.MessageType)),
+                logger.BindProperty("Message", context.Message.Instance),
+                logger.BindProperty("MessageId", context.MessageId),
+            };
+            properties = properties.Concat(logger.BuildHeaders(context.Headers));
+            logger.WriteInfo(messageTemplate, properties);
+            return next();
         }
 
         public class Registration : RegisterStep
@@ -32,7 +39,6 @@ namespace NServiceBus.Serilog.Tracing
             public Registration()
                 : base("SerilogSendMessage", typeof(SendMessageBehavior), "Logs outgoing messages")
             {
-                //InsertAfter(WellKnownStep.DispatchMessageToTransport);
             }
         }
     }
