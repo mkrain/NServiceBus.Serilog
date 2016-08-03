@@ -14,7 +14,7 @@
     <language>en-AU</language>
     <tags>NServiceBus, Serilog, NServiceBus.Serilog, Seq</tags>
 	  <dependencies>
-      <dependency id="NServiceBus" version="[6.0.0-beta5, 7.0.0)" />
+      <dependency id="NServiceBus" version="[6.0.0-beta4, 7.0.0)" />
 		  <dependency id="Serilog" version="2.0.0" />
 	  </dependencies>
   </metadata>
